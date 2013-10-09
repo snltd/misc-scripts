@@ -1,0 +1,27 @@
+#!/bin/ksh
+
+#=============================================================================
+#
+# mmv
+# ---
+#
+# Rename multiple files. Rudimentary. Operates on all files in the current
+# working directory. Takes two arguments, a search pattern and a replace
+# pattern; the former is replaced with the latter in any filenames which
+# contain it.
+#
+# R Fisher 2009
+#
+#=============================================================================
+
+if [ $# -ne 2 ]
+then
+	print "usage: ${0##*/} <search pattern> <replace pattern>"
+	exit 1
+fi
+
+ls | egrep -- "$1" | while read fname
+do
+	mv -i "$fname" "$(print "$fname" | sed "s/$1/$2/")"
+done
+
