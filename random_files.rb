@@ -26,7 +26,8 @@
 #
 #=============================================================================
 
-require 'optparse'
+require "optparse"
+require "open3"
 
 #-----------------------------------------------------------------------------
 # VARIABLES
@@ -250,11 +251,21 @@ findargs << " -a -name " + options[:regex] if options[:regex]
 
 puts "running 'find #{dirlist} #{findargs}'" if (options[:verbose])
 
-f_arr = %x(/bin/find #{dirlist} #{findargs} 2>/dev/null).split("\n");
+stdout, stderr, status = Open3.capture3(
+	"/usr/bin/find #{dirlist} #{findargs}")
 
 # If find didn't give us anything, exit without raising an error
 
-exit 0 if f_arr.size == 0
+if status.exitstatus != 0
+	abort("find exited #{status.exitstatus}.\nstderr: #{stderr}")
+end
+
+f_arr = stdout.split("\n")
+
+if f_arr.size == 0
+	puts "no files matched" if options[:verbose]
+	exit 0
+end
 
 # Now go through the list getting the real values
 
