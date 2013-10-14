@@ -24,7 +24,7 @@ qualify_path()
 
     if [[ "$1" != /* ]]
     then
-		
+
 		if [[ -d "$1" ]]
 		then
 			dir="$1"
@@ -66,20 +66,15 @@ fi
 for file in "$@"
 do
 
-	if [[ -f $file ]]
+	if [[ -f "$file" ]]
 	then
-
 		QUAL_PATH=$(qualify_path "$file")
-	
 		DIR_PART="${QUAL_PATH%/*}"
 		FILE_PART="${QUAL_PATH##*/}"
-
 		NEW_FILE=$(mk_name "$FILE_PART")
 
-		if [[ "$NEW_FILE" == "$FILE_PART" ]]
+		if [[ "$NEW_FILE" != "$FILE_PART" ]]
 		then
-			print "No need to rename '${file}'."
-		else
 			print "${DIR_PART}/${FILE_PART}\n  -> $NEW_FILE"
 			mv -i  "$QUAL_PATH" "${DIR_PART}/$NEW_FILE"
 		fi
