@@ -1,0 +1,674 @@
+#!/bin/sh
+
+#==============================================================================
+#
+# Script to help create Solaris packages
+# v4.0
+#
+# 1999/2000 Rob Fisher
+#
+# This script is really only a wrapper for pkgmk. Its job is to produce file
+# lists which pkgmk can make into the actual packages.
+#
+# changes
+# -------
+# 4.0 - a comprehensive and long overdue rewrite
+# - all work is now done in a temporary directory
+# - reformatted the help page
+# - takes preremove and posintstall scripts
+# - all pre/post remove/install scripts can be individually named
+# - packages can be targetted for any hardware architecture or version of
+#   Solaris
+# - more elegant method of requesting additional information
+# - more elegant way of handiling post/pre install/remove scripts
+# - dropped the "change owver" part - code is still there, but commented out
+#
+#==============================================================================
+
+PATH=/usr/bin:/bin
+
+# The version of the script
+
+MY_VER=4.0
+
+# The script defaults to doing things in the user's home directory, so if
+# the user is root that could cause problems, so we give them a nicer home
+# directory
+
+if [ "$HOME" = "/" ]
+then
+	BASE="/var/tmp"
+else
+	BASE=$HOME
+fi
+
+# where to create files and whatnot
+
+TMP_DIR="$BASE/tmppkgbuild"
+
+# check we have, or can create the temporary directory
+
+if [ ! -d $TMP_DIR ]
+then
+	mkdir $TMP_DIR >/dev/null 2>&1
+fi
+
+if [ ! -d $TMP_DIR ]
+then
+	echo "ERROR: no temporary directory $TMP_DIR"
+	exit 1
+fi
+
+CHECKINSTALL="${TMP_DIR}/checkinstall"
+PROTOTYPE="${TMP_DIR}/Prototype"
+F_LIST="${TMP_DIR}/file_list.tmp"
+PKGINFO="${TMP_DIR}/pkginfo"
+
+#==============================================================================
+#
+# Functions which make the thing work go here
+#
+#==============================================================================
+
+print_help() {
+
+cat << EOHELP
+
+`basename $0` version $MY_VER
+
+  -a : author/vendor of package
+  -A : specify that the package can only be installed on the same hardware
+       architecture on which it was built (i.e. SPARC/intel)
+  -b : base directory to install package into
+  -c : category of package (application/system)
+  -d : directory to take source files from
+  -D : package description
+  -f : place the finished package in the named directory
+  -h : this message
+  -O : location of preremove script to build into package
+  -o : location of postremove script to build into package
+  -P : location of preinstall script to build into package
+  -p : location of postinstall script to build into package
+  -l : long name of the package
+  -n : short name of the package
+  -r : unqualified file base directory
+  -v : package software version
+  -V : specify that the package can only be installed on the given version
+       of Solaris
+  -u : use the named list of files to build the package
+
+EOHELP
+
+}
+
+find_extra_script() {
+
+	# $1 is the directory/filename we're given, $2 is the name of
+	# the script. We print the name of the script to use, or "false" if we
+	# don't know what to do
+
+	if [ -d "$1" ]
+	then
+
+		if [ -f "${1}/$2" ]
+		then
+			echo "${1}/$2"
+		else
+			echo "false"
+		fi
+
+	else
+
+		if [ -f "$1" ]
+		then
+			echo "$1"
+		else
+			echo "false"
+		fi
+	fi
+
+}
+
+checkset() {
+
+	# Look to see if the variable named in $1 is set
+
+    TVAL=`eval echo \\$\$1`
+
+    if [ -n "$TVAL" ]
+    then
+        echo $TVAL
+    fi
+
+}
+
+print_right() {
+
+	# Just prints the request for input or some dumb string for a number of
+	# different variables
+
+    case $1 in
+
+        PKG)
+            echo "enter package short name: \c"
+            ;;
+
+        NAME)
+            echo "enter package long name: \c"
+            ;;
+
+        VERSION)
+            echo "enter version of software: \c"
+            ;;
+
+        BASEDIR)
+            echo "enter base directory for relative paths [/]: \c"
+            ;;
+
+        VENDOR)
+            echo "enter software vendor [gnu]: \c"
+            ;;
+
+        CATEGORY)
+            echo "enter software category [application]: \c"
+            ;;
+
+        DESC)
+            echo "enter brief description of software [none]: \c"
+            ;;
+
+		PREINSTALL)
+			echo "   preinstall script: \c"
+			;;
+
+		POSTINSTALL)
+			echo "  postinstall script: \c"
+			;;
+
+		PREREMOVE)
+			echo "    preremove script: \c"
+			;;
+
+		POSTREMOVE)
+			echo "   postremove script: \c"
+			;;
+
+    esac
+
+}
+
+get_val() {
+
+	# nice little function to get a value for a variable. The switch lets
+	# you have default values selected just by hitting enter
+
+    read value
+
+    if [ x"$value" = x ]
+    then
+
+		# some of the questions have default values - just hit return and
+		# you get them. They're stored here
+
+        case $1 in
+
+			BASEDIR)
+				value="/"
+				;;
+
+			VENDOR)
+				value="gnu"
+				;;
+
+			CATEGORY)
+				value="application"
+				;;
+
+			DESC)
+				value="none"
+				;;
+
+        esac
+
+    fi
+
+    echo $value
+
+}
+
+#==============================================================================
+#
+# The actual program starts here
+#
+#==============================================================================
+
+while getopts a:Ab:c:d:D:f:hl:n:o:p:P:r:u:v:V: option
+do
+
+	case $option in
+
+		a)		VENDOR=$OPTARG
+				# whoever wrote/supplied the software in the package.
+				# If this is not given on the command line, the user is
+				# prompted for it later
+				;;
+
+		A)		SAMEARCH=true
+				# Package will only install on the same hardware type (SPARC
+				# or Intel) as it was built
+				;;
+
+		b)		NEWBASE=$OPTARG
+				# this is the main directory for the installed package.
+				# It defaults to /usr/local if no alternative is given
+				;;
+
+		c)		CATEGORY=$OPTARG
+				# the type of software held in the package.
+				# If this is not given on the command line, the user is
+				# prompted for it later
+				;;
+
+		d)		SRC_DIR=$OPTARG
+				# this is the directory the package has been built it.
+				# It defaults to $HOME/pkgdir if no alternative is given
+				# but is not needed if the -u option is used
+				;;
+
+		D)		DESC=$OPTARG
+				# a brief description of the software in the package.
+				# If this is not given on the command line, the user is
+				# prompted for it later
+				;;
+
+		f)		FINISH=$OPTARG
+				# this is the directory in which to place the finished
+				# package. It defaults to ${HOME}/finished_packages-OS_VER
+				# if no alternative is given
+				;;
+
+		h)		print_help
+				exit 2
+				;;
+
+		l)		NAME=$OPTARG
+				# this is the long name of the package.
+				# If this is not given on the command line, the user is
+				# prompted for it later
+				;;
+
+		n)		PKG=$OPTARG
+				# this is the short name of the package.
+				# If this is not given on the command line, the user is
+				# prompted for it later
+				;;
+
+		P)		PREREMOVE=$OPTARG
+				# the location of any preremove script
+				;;
+
+		o)		POSTREMOVE=$OPTARG
+				# this is the location of the postremove script, if one is
+				# to be used. If it's a directory then we'll look for
+				# postremove inside it, if it's a file, we'll use the exact
+				# named file
+				;;
+
+		p)		POSTINSTALL=$OPTARG
+				# this is the name of the directory of the postinstall
+				# script, if one is to be used.
+				;;
+
+		P)		PREINSTALL=$OPTARG
+				# this is the name of the directory of the preinstall
+				# script, if one is to be used.
+				;;
+
+		r)		BASEDIR=$OPTARG
+				# this is the directory relative to which any files without
+				# qualified paths are installed. If this is not given on
+				# the command line, the user is prompted for it later
+				;;
+
+		u)		FILELIST=$OPTARG
+				# A list of files to use rather than running a find and
+				# building one ourselves
+				;;
+
+		v)		VERSION=$OPTARG
+				# this is the version of the software int the package.
+				# If this is not given on the command line, the user is
+				# prompted for it later
+				;;
+		V)		OS=$OPTARG
+				# The final package will only install onto the given version
+				# of Solaris
+				;;
+
+	esac
+
+done
+
+shift `expr $OPTIND - 1`
+
+# A few checks of the supplied options now. The first thing we have to do is
+# create the list of files which are going to be used
+
+# If we've been given a list of files to put in the package, check it really
+# exists, then copy it to the file list
+
+if [ -n "$FILELIST" ]
+then
+
+	if [ ! -f $FILELIST ]
+	then
+		echo "\nERROR: no list of files $FILELIST\n"
+		exit 1
+	else
+		echo "        file list: $FILELIST"
+		#echo "DEBUG copying file $FILELIST to $F_LIST"
+		echo "copying file list: \c"
+		cp $FILELIST $F_LIST \
+		&& echo "OK" || echo "failed"
+	fi
+
+else
+
+	# Then we'd better make sure that the software the user wants to package
+	# actually exists.
+
+	if [ -z "$SRC_DIR" ]
+	then
+		echo "ERROR: no directory to take software from"
+		exit 1
+	fi
+
+	echo "    source directory: $SRC_DIR"
+
+	if [ ! -d $SRC_DIR ]
+	then
+		echo "ERROR: directory $SRC_DIR does not exist\n"
+		exit 1
+	fi
+
+	#echo "DEBUG generating file list"
+	echo "generating file list: \c"
+	find $SRC_DIR -print > $F_LIST \
+	&& echo "OK" || echo "failed"
+
+fi
+
+# Advise them if they appear not to have made a sensible decision of target
+# directory.
+
+if [ -n "$NEWBASE" ]
+then
+
+	if [ -d $NEWBASE ]
+	then
+		echo "   target directory: $NEWBASE. "
+	else
+		echo "WARNING: base directory $NEWBASE does not exist on this machine"
+	fi
+
+fi
+
+# Need an OS version - not any more we don't
+
+if [ -z "$OS" ]
+then
+	#echo "DEBUG: targeting for any operating system version"
+	OS="no_version"
+fi
+
+# See if they've specified where to put the finished package. If not, make
+# them somewhere sensible. Exit on any errors.
+
+if [ -z "$FINISH" ]
+then
+	FINISH="${HOME}/finished_packages-${OS}"
+fi
+
+if [ ! -d $FINISH ]
+then
+	mkdir $FINISH || echo "\nERROR: can't create \"$FINISH\"\n"
+fi
+
+if [ ! -d $FINISH ]
+then
+	echo "\nERROR: directory \"$FINISH\" does not exist\n"
+else
+	echo "        packaging to: $FINISH"
+fi
+
+# create a temporary file to get the UID and GID of the user running the script
+# (which will be needed later)
+
+#TFILE="${TMP_DIR}/getidtmpfile"
+#> $TFILE
+
+#USER=`ls -l $TFILE | awk '{ print $3 }'`
+#GROUP=`ls -l $TFILE | awk '{ print $4 }'`
+
+#export USER GROUP # nawk will need these later, so we have to export them
+
+#rm $TFILE # and tidy up
+
+# We have to start off the package definition file with pointers to the
+# pkginfo and checkinstall files. If either of these don't exist, then we
+# might as well give up now.
+
+echo " checkinstall script: $CHECKINSTALL"
+
+# Build the checkinstall script ourselves. This saves us having to carry
+# around a copy for each version of Solaris.
+
+echo " making checkinstall: \c"
+
+cat << EOCHECKINSTALL > $CHECKINSTALL
+#!/bin/sh
+
+# Automatically generated checkinstall script
+
+EOCHECKINSTALL
+
+# If the user specified an OS version put the check in the checkinstall
+# script
+
+if [ $OS != "any_version" ]
+then
+cat <<-EOPLATCHK >> $CHECKINSTALL
+
+	platform=$OS
+	need_platform=${OS}
+
+	if [ \$platform != \$need_platform ]
+	then
+		echo "This package is only to be installed on Solaris \$need_platform"
+		exit 1
+	fi
+
+EOPLATCHK
+
+fi
+
+# If the user specified a hardware architecture, put a check into the
+# checkinstall script so the package will only install on that architecture
+
+if [ x$SAMEARCH != x ]
+then
+cat <<-EOARCHCHK >> $CHECKINSTALL
+
+	need_arch=`uname -p`
+	arch=\`uname -p\`
+
+	if [ \$arch != \$need_arch ]
+	then
+		echo "This package is only to be installed on \$need_arch Solaris"
+		exit 1
+	fi
+
+EOARCHCHK
+
+fi
+
+# Better check that the checkinstall script got created okay.
+
+grep "^# Automatically generated" $CHECKINSTALL > /dev/null 2>&1 \
+&& echo "OK" || echo "failed"
+
+# Now start creating the Prototype file in a temporary location
+
+echo "  creating prototype: \c"
+
+/usr/bin/echo "i pkginfo\ni checkinstall" > $PROTOTYPE \
+&& echo $PROTOTYPE || echo "failed"
+
+# Preinstall postinstall etc etc
+
+for PREPOST in PREINSTALL POSTINSTALL PREREMOVE POSTREMOVE
+do
+	print_right $PREPOST
+
+    val="`checkset $PREPOST`"
+
+	if [ -z "$val" ]
+	then
+		echo "none requested"
+	else
+    	PP_SRC=`eval echo \\$\$PREPOST`
+		echo $PP_SRC
+
+		if [ -f $PP_SRC ]
+		then
+			LC_NAME=`echo $PREPOST | tr '[A-Z]' '[a-z]'`
+
+			echo "             copying: \c"
+			cp $PP_SRC "${TMP_DIR}/$LC_NAME" \
+			&& echo "$TMP_DIR/$LC_NAME" || echo "failed"
+
+			echo " adding to prototype: \c"
+			echo "i $LC_NAME" >> $PROTOTYPE \
+			&& echo "OK" || echo "failed"
+		else
+			echo "           not found: exiting"
+			exit 1
+		fi
+
+	fi
+done
+
+# Now grab the rest of the filenames and create the body of the Prototype
+# file with them
+
+echo " finishing prototype: \c"
+
+if [ -n "$NEWBASE" ]
+then
+	#echo "DEBUG changing $SRC_DIR to $NEWBASE"
+	sed -e "s|${SRC_DIR}|${NEWBASE}|" < $F_LIST | pkgproto >> $PROTOTYPE \
+	&& echo "OK" || echo "failed"
+else
+	#echo "DEBUG straight copying file list"
+	pkgproto < $F_LIST >> $PROTOTYPE \
+	&& echo "OK" || echo "failed"
+fi
+
+
+	# But the user and group owners of these files may be those of the user
+	# that installed them, so we'll have to get nawk to change both of those
+	# to root.
+
+	#nawk '{ OFS=" ";
+
+	#if ($5 == ENVIRON["USER"])
+		#$5 = "root";
+
+	#if ($6 == ENVIRON["GROUP"])
+		#$6 = "root";
+
+	#print $1, $2, $3, $4, $5, $6 }' $PROTOTYPE | grep -v " / " > \
+	#"${PROTOTYPE}.tmp"
+
+#mv "$PROTOTYPE.tmp" $PROTOTYPE
+
+#rm $TPFILE # and leave /tmp how we found it
+
+#echo "DEBUG this is the prototype file"
+#cat $PROTOTYPE
+
+# Now we can create the pkginfo file. Some of the fields can be created
+# automatically
+
+ARCH=`uname -p`
+	# The hardware architecture the package is built for (normally "sparc")
+PSTAMP=`date +%y%b%e%H%M | tr \  0`
+	# The date on which the package was created
+ISTATES="S s 1 2 3"
+	# runlevels that the package can be installed in - should be safe
+RSTATES="S s 1 2 3"
+	# runlevels that the package can be removed in - should be safe
+CLASSES="none"
+	# not sure what this means but I know I don't need it
+
+# We'll have to ask for the others
+
+# loop through everything that needs a value
+
+for chk in PKG NAME VERSION BASEDIR VENDOR CATEGORY DESC
+do
+
+    val="`checkset $chk`"
+
+    until [ -n "$val" ]
+    do
+        print_right $chk
+        val=`get_val $chk`
+        eval $chk='$val'
+    done
+
+done
+
+# Okay, we should have everything, so actually create the file
+
+echo "\n    creating pkginfo: \c"
+
+cat << EOPKGINFO > $PKGINFO
+PKG=$PKG
+NAME=$NAME
+ARCH=$ARCH
+VERSION=$VERSION
+CATEGORY=$CATEGORY
+DESC=$DESC
+VENDOR=$VENDOR
+CLASSES=$CLASSES
+ISTATES=$ISTATES
+RSTATES=$RSTATES
+BASEDIR=$BASEDIR
+PSTAMP=$PSTAMP
+EOPKGINFO
+
+grep "^PKG=$PKG" $PKGINFO > /dev/null 2>&1 \
+&& echo $PKGINFO || echo "failed"
+
+# Now tell pkgmk to do the business and create the package in the final
+# target directory
+
+#echo "DEBUG doing pkgmk"
+
+echo "    creating package: \c"
+
+pkgmk -o -r / -d $FINISH -f $PROTOTYPE -b $BASEDIR > /dev/null 2>&1 \
+&& echo "${FINISH}/$PKG" || echo "failed"
+
+# flags explained:
+# -o tells it to overwrite any existing package of the same name
+# -r sets the root of the distribution
+# -d is where to store the finished package
+# -f is the name of the Prototype file.
+
+# Finally, we should clean up after ourselves
+
+rm -f $PROTOTYPE $PKGINFO $CHECKINSTALL $F_LIST "${TMP_DIR}/preinstall" \
+"${TMP_DIR}/preremove" "${TMP_DIR}/postinstall" "${TMP_DIR}/postremove"
+
