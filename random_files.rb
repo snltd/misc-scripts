@@ -28,6 +28,7 @@
 
 require "optparse"
 require "open3"
+require "pathname"
 
 #-----------------------------------------------------------------------------
 # VARIABLES
@@ -95,9 +96,9 @@ def make_link(src_file, target, options)
     dest_fname = File.basename(src_file)
   end
 
-  dest_file = File.join(target, dest_fname)
+  dest_file = Pathname(target) + dest_fname
 
-  if (File.exists?(dest_file))
+  if dest_file.exist?
     STDERR.puts("WARNING: #{dest_file} exists")
   else
     puts(src_file + " -> " + dest_file) if options[:debug]
@@ -201,14 +202,13 @@ abort "ERROR: -x, -X, and -s are exclusive" if format_count > 1
 
 abort "ERROR: require a target directory [-d]" unless options[:target]
 
-target = options[:target]
+target = Pathname(options[:target])
 
-unless File.exists?(target) && File.directory?(target) &&
-  File.writable?(target)
+unless target.exist? && target.directory? && target.writable?
   abort target + " does not exist or is not a writable directory"
 end
 
-target = File.absolute_path(target)
+target = target.realpath
 
 puts("Creating links in #{target}") if options[:verbose]
 
@@ -220,8 +220,8 @@ if options[:rm]
   puts("Removing existing links") if options[:verbose]
 
   Dir.foreach(target) do |file|
-    rmfile = File.join(target, file)
-    File.unlink(rmfile) if File.symlink?(rmfile)
+    rmfile = target + file
+    File.unlink(rmfile) if rmfile.symlink?
   end
 
 end
@@ -282,8 +282,8 @@ end
 # the files into the target directory.
 
 random_indices(f_arr.size, options[:number].to_i).each do |el|
-  make_link(File.absolute_path(f_arr[el]), target, options) if f_arr[el]
+  pth = Pathname(f_arr[el]).realpath
+  make_link(pth, target, options) if f_arr[el]
 end
 
 # All done
-
