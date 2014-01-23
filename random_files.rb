@@ -86,7 +86,7 @@ def make_link(src_file, target, options)
   case options[:namescheme]
 
   when "obscure"
-    dest_fname = Digest::MD5.hexdigest(src_file) + File.extname(src_file)
+    dest_fname = Digest::MD5.hexdigest(src_file.to_s) + File.extname(src_file)
   when "expand"
     dest_fname = src_file.gsub("/", "-").slice(1..-1)
   when "seq"
