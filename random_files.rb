@@ -205,7 +205,8 @@ abort "ERROR: require a target directory [-d]" unless options[:target]
 target = Pathname(options[:target])
 
 unless target.exist? && target.directory? && target.writable?
-  abort target + " does not exist or is not a writable directory"
+  puts target.to_s + " does not exist or is not a writable directory"
+  exit 1
 end
 
 target = target.realpath
