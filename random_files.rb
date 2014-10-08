@@ -26,9 +26,9 @@
 #
 #=============================================================================
 
-require "optparse"
-require "open3"
-require "pathname"
+require 'optparse'
+require 'open3'
+require 'pathname'
 
 #-----------------------------------------------------------------------------
 # VARIABLES
@@ -37,9 +37,16 @@ require "pathname"
 # get '-n'
 
 options = {
-  :number => 10, :target => false, :extensions => false,
-  :timeo => false, :timen => false, :filter => false, :rm => false,
-  :namescheme => "copy", :verbose => false, :debug => false
+  number:     10,
+  target:     false,
+  extensions: false,
+  timeo:      false,
+  timen:      false,
+  filter:     false,
+  rm:         false,
+  namescheme: 'copy',
+  verbose:    false,
+  debug:      false
 }
 
 $seq_count = 1
@@ -47,7 +54,6 @@ $seq_count = 1
 
 format_count = 0
   # used to count how many format specifying options the user tries to pass
-
 
 #-----------------------------------------------------------------------------
 # FUNCTIONS
@@ -76,7 +82,6 @@ def random_indices(elements, want)
   out_list
 end
 
-
 def make_link(src_file, target, options)
   #
   # Actually do the linking. Generate the proper file paths first.  We
@@ -85,12 +90,12 @@ def make_link(src_file, target, options)
   #
   case options[:namescheme]
 
-  when "obscure"
+  when 'obscure'
     dest_fname = Digest::MD5.hexdigest(src_file.to_s) + File.extname(src_file)
-  when "expand"
-    dest_fname = src_file.gsub("/", "-").slice(1..-1)
-  when "seq"
-    dest_fname = "%04d" % $seq_count + File.extname(src_file)
+  when 'expand'
+    dest_fname = src_file.gsub('/', '-').slice(1..-1)
+  when 'seq'
+    dest_fname = '%04d' % $seq_count + File.extname(src_file)
     $seq_count += 1
   else
     dest_fname = File.basename(src_file)
@@ -101,86 +106,88 @@ def make_link(src_file, target, options)
   if dest_file.exist?
     STDERR.puts("WARNING: #{dest_file} exists")
   else
-    puts(src_file + " -> " + dest_file) if options[:debug]
+    puts(src_file + ' -> ' + dest_file) if options[:debug]
     File.symlink(src_file, dest_file)
   end
-
 end
 
 #-----------------------------------------------------------------------------
 # SCRIPT STARTS HERE
 
+Encoding.default_external = Encoding::UTF_8
+Encoding.default_internal = Encoding::UTF_8
+
 # There are quite a lot of options, but it's easy to get them with Ruby
 
 optparse = OptionParser.new do |opts|
   opts.banner = "Usage: #{File.basename(__FILE__)} " +
-                "[-neONrRxsSvDh] -d target dir..."
+                '[-neONrRxsSvDh] -d target dir...'
 
   # The number of random files to select and link
   #
-  opts.on("-n", "--number N",
-      "link to N random files (default is #{options[:number]})") do |n|
+  opts.on('-n', '--number N',
+          "link to N random files (default is #{options[:number]})") do |n|
     options[:number] = n
   end
 
   # Where to create the symbolic links. Must exist and be writable
   #
-  opts.on("-d", "--dir DIRECTORY", "put symlinks in DIRECTORY") do |dir|
+  opts.on('-d', '--dir DIRECTORY', 'put symlinks in DIRECTORY') do |dir|
     options[:target] = dir
   end
 
   # A comma-separated list of file extensions to allow linkage of
   #
-  opts.on("-e", "--ext ext1,ext2..",
-      "only link to files with these extensions") do |extlist|
-    options[:extlist] = extlist.split(",")
+  opts.on('-e', '--ext ext1,ext2..',
+          'only link to files with these extensions') do |extlist|
+    options[:extlist] = extlist.split(',')
   end
 
   # Filter on file age (as arguments to find(1))
   #
-  opts.on("-O", "--older N", "only link to files older than N days") do |n|
+  opts.on('-O', '--older N', 'only link to files older than N days') do |n|
     options[:timeo] = n
   end
 
-  opts.on("-N", "--newer N", "only link to files newer than N days") do |n|
+  opts.on('-N', '--newer N', 'only link to files newer than N days') do |n|
     options[:timen] = n
   end
 
   # Filter on filename pattern
   #
-  opts.on("-r", "--regex REGEX", "only link to files matching REGEX") do |rx|
+  opts.on('-r', '--regex REGEX', 'only link to files matching REGEX') do |rx|
     options[:regex] = rx
   end
 
   # Remove existing symlinks in target directory
   #
-  opts.on("-R", "--remove", "remove symlinks in target directory") do
+  opts.on('-R', '--remove', 'remove symlinks in target directory') do
     options[:rm] = true
   end
 
-  # How to name the links. Default is "copy", which just uses the same name as
+  # How to name the links. Default is 'copy', which just uses the same name as
   # the target
   #
-  opts.on("-x", "--expand", "link filenames are dir-file.ext") do
-    options[:namescheme] = "expand"
+  opts.on('-x', '--expand', 'link filenames are dir-file.ext') do
+    options[:namescheme] = 'expand'
     format_count += 1
   end
 
-  opts.on("-s", "--sequence", "link filenames are numbered 000x.ext") do
-    options[:namescheme] = "seq"
+  opts.on('-s', '--sequence', 'link filenames are numbered 000x.ext') do
+    options[:namescheme] = 'seq'
     format_count += 1
   end
 
-  opts.on("-X", "--obscure", "link filenames are MD5 hashes") do
-    require "digest/md5"
-    options[:namescheme] = "obscure"
+  opts.on('-X', '--obscure', 'link filenames are MD5 hashes') do
+    require 'digest/md5'
+    options[:namescheme] = 'obscure'
     format_count += 1
   end
 
-  opts.on("-v", "--verbose", "be verbose") { options[:verbose] = true }
-  opts.on("-D", "--debug", "show debug info") { options[:debug] = true }
+  opts.on('-v', '--verbose', 'be verbose') { options[:verbose] = true }
+  opts.on('-D', '--debug', 'show debug info') { options[:debug] = true }
 
-  opts.on("-h", "--help", "show this information") do
+  opts.on('-h', '--help', 'show this information') do
     puts opts
     exit 0
   end
@@ -191,21 +198,21 @@ optparse.parse!
 
 # Let's do some sanity checking. We need at least one directory to search
 
-abort("ERROR: require at least one directory") if ARGV.length == 0
+abort('ERROR: require at least one directory') if ARGV.length == 0
 
 # -x, -X, -s are exclusive. Make sure we have at most one of them
 
-abort "ERROR: -x, -X, and -s are exclusive" if format_count > 1
+abort 'ERROR: -x, -X, and -s are exclusive' if format_count > 1
 
 # Check the target directory. We need to have one supplied, and it must be
 # writable
 
-abort "ERROR: require a target directory [-d]" unless options[:target]
+abort 'ERROR: require a target directory [-d]' unless options[:target]
 
 target = Pathname(options[:target])
 
 unless target.exist? && target.directory? && target.writable?
-  puts target.to_s + " does not exist or is not a writable directory"
+  puts target.to_s + ' does not exist or is not a writable directory'
   exit 1
 end
 
@@ -218,7 +225,7 @@ puts("Creating links in #{target}") if options[:verbose]
 # runs.
 
 if options[:rm]
-  puts("Removing existing links") if options[:verbose]
+  puts('Removing existing links') if options[:verbose]
 
   Dir.foreach(target) do |file|
     rmfile = target + file
@@ -231,41 +238,41 @@ end
 # to generate a list of all the files from which we will choose our
 # randoms.
 
-dirlist, findargs = ARGV.join(" "), "-type f"
+dirlist, findargs = ARGV.join(' '), '-type f'
 
 if options[:extlist]
-  findargs << ' -a \(-name \\*.' + extlist.shift()
-  extlist.each {|ext| findargs << ' -o -name \\*.' + ext }
-  findargs << "\)"
+  findargs << ' -a \(-name \\*.' + extlist.shift
+  extlist.each { |ext| findargs << ' -o -name \\*.' + ext }
+  findargs << '\)'
 end
 
 # Time options
 
-findargs << " -a -mtime +" + options[:timeo] if options[:timeo]
-findargs << " -a -mtime -" + options[:timen] if options[:timen]
+findargs << ' -a -mtime +' + options[:timeo] if options[:timeo]
+findargs << ' -a -mtime -' + options[:timen] if options[:timen]
 
 # Regex options
 
-findargs << " -a -name " + options[:regex] if options[:regex]
+findargs << ' -a -name ' + options[:regex] if options[:regex]
 
 # Run the command, saying what it is if we're being verbose
 
-puts "running 'find #{dirlist} #{findargs}'" if (options[:verbose])
+puts "running 'find #{dirlist} #{findargs}'" if options[:verbose]
 
 stdout, stderr, status = Open3.capture3(
-	"/usr/bin/find #{dirlist} #{findargs}")
+  "/usr/bin/find #{dirlist} #{findargs}")
 
 # If find didn't give us anything, exit without raising an error
 
 if status.exitstatus != 0
-	abort("find exited #{status.exitstatus}.\nstderr: #{stderr}")
+  abort("find exited #{status.exitstatus}.\nstderr: #{stderr}")
 end
 
 f_arr = stdout.split("\n")
 
 if f_arr.size == 0
-	puts "no files matched" if options[:verbose]
-	exit 0
+  puts 'no files matched' if options[:verbose]
+  exit 0
 end
 
 # Now go through the list getting the real values
@@ -275,7 +282,7 @@ if options[:verbose]
 end
 
 if options[:number].to_i > f_arr.size
-  puts "WARNING: asked to link more files than we have"
+  puts 'WARNING: asked to link more files than we have'
 end
 
 # We have all the files we might wish to link to in the f_arr[] array.
@@ -286,5 +293,3 @@ random_indices(f_arr.size, options[:number].to_i).each do |el|
   pth = Pathname(f_arr[el]).realpath
   make_link(pth, target, options) if f_arr[el]
 end
-
-# All done
