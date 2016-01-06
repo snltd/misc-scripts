@@ -1,7 +1,7 @@
 #!/bin/ksh
 
 #=============================================================================
-# 
+#
 # un
 # --
 #
@@ -14,7 +14,7 @@
 
 # Always lower-case the file suffix
 
-typeset -l SFX 
+typeset -l SFX
 
 # See if tar is called gtar
 
@@ -34,7 +34,7 @@ function unpack_file
 	# check a file and unpack it if we can
 	# $1 is the file
 
-	if [[ ! -s "$1" ]] 
+	if [[ ! -s "$1" ]]
 	then
 		print "ERROR: '$1' does not exist or is not a file"
 		return 1
@@ -56,9 +56,9 @@ function unpack_file
 		"z")	ARC="uncompress -c \"$1\"  | $TAR -xf -"
 				;;
 
-		"tar")	ARC="$TAR -xf - \"$1\""
+		"tar")	ARC="$TAR -xf \"$1\""
 				;;
-		
+
 		"zip")	ARC="unzip -qq -o \"$1\""
 				;;
 
